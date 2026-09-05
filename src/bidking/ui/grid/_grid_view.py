@@ -3400,13 +3400,6 @@ class GridWindow:
         self._est_label_red.config(text=f"全红估价  ¥{est_red:,.0f}")
         self._est_label_orange.config(text=f"全橙估价  ¥{est_orange:,.0f}")
         self._est_label_gold_red.config(text=f"金红估价  ¥{est_gold_red:,.0f}")
-        rnd = int(self.state.current_round or 1)
-        if rnd >= 4:
-            pf = int(p.get("points_floor") or 0)
-            pc = int(p.get("points_ceiling") or 0)
-            self._est_label_floor.config(text=f"仓位估价区间  ¥{pf:,.0f} – ¥{pc:,.0f}")
-        else:
-            self._est_label_floor.config(text="")
 
     # ── 界面构建 ──────────────────────────────────────────────────────────
 
@@ -3710,11 +3703,9 @@ class GridWindow:
         self._est_label_red = tk.Label(row2, text="", **tip_lbl)
         self._est_label_orange = tk.Label(row2, text="", **tip_lbl)
         self._est_label_gold_red = tk.Label(row2, text="", **tip_lbl)
-        self._est_label_floor = tk.Label(row2, text="", **tip_lbl)
         self._est_label_red.pack(side="left", padx=(0, 16))
         self._est_label_orange.pack(side="left", padx=(0, 16))
         self._est_label_gold_red.pack(side="left", padx=(0, 16))
-        self._est_label_floor.pack(side="left", padx=(0, 0))
         _PricingHoverTip(self._est_label_aisha, self._tooltip_text_main_points)
         _PricingHoverTip(self._est_label_recommend, self._tooltip_text_recommend_bid)
         _PricingHoverTip(self._est_label_early, self._tooltip_text_early_exclusions)
@@ -3729,9 +3720,6 @@ class GridWindow:
             self._est_label_gold_red,
             lambda: self._tooltip_text_position_estimate("gold_red"),
         )
-        _PricingHoverTip(
-            self._est_label_floor, lambda: self._tooltip_text_position_estimate("floor")
-        )
         self._update_vacant_estimate_bar()
 
     def _build_legend(self) -> None:
@@ -3739,8 +3727,6 @@ class GridWindow:
         bar.pack(fill="x", padx=8)
         row1 = tk.Frame(bar, bg="#222233")
         row1.pack(fill="x")
-        row2 = tk.Frame(bar, bg="#222233")
-        row2.pack(fill="x", pady=(2, 0))
 
         # 只保留未知品质色块，已知品质直接通过格子颜色区分。
         tk.Label(
@@ -3812,112 +3798,6 @@ class GridWindow:
         )
         self._total_label.pack(side="right", padx=12)
         _PricingHoverTip(self._total_label, self._tooltip_text_grid_total)
-
-        self._pack_legend_operation_hint(row2)
-
-    def _pack_legend_operation_hint(self, parent: tk.Frame) -> None:
-        """图例第二行操作说明：按宽度自动换行；正文与快捷键、鼠标键、金/红/推断幽灵分色。"""
-        bg = "#222233"
-        base = "#aab6cc"
-        key = "#e8eef8"
-        mod = "#7ec0ff"
-        gold = "#f0c868"
-        red = "#ff9393"
-        infer = "#8fd8b8"
-        font_spec: Tuple[str, int] = ("微软雅黑", 8)
-        ch_w = max(1, tkfont.Font(parent, font=font_spec).measure("中"))
-
-        wrap = tk.Frame(parent, bg=bg)
-        wrap.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
-
-        text = tk.Text(
-            wrap,
-            wrap=tk.CHAR,
-            width=48,
-            height=4,
-            font=font_spec,
-            bg=bg,
-            fg=base,
-            borderwidth=0,
-            highlightthickness=0,
-            padx=0,
-            pady=0,
-            cursor="arrow",
-            takefocus=False,
-            insertwidth=0,
-        )
-        text.pack(fill=tk.X, expand=True)
-
-        for tag, color in (
-            ("base", base),
-            ("key", key),
-            ("mod", mod),
-            ("gold", gold),
-            ("red", red),
-            ("infer", infer),
-        ):
-            text.tag_configure(tag, foreground=color)
-
-        segments: List[Tuple[str, str]] = [
-            ("左键", "key"),
-            ("空格拖", "base"),
-            ("普通幽灵", "infer"),
-            ("；", "base"),
-            ("Ctrl", "mod"),
-            ("+左键空格拖", "base"),
-            ("金幽灵", "gold"),
-            ("；", "base"),
-            ("Ctrl", "mod"),
-            ("+右键空格拖", "base"),
-            ("红幽灵", "red"),
-            ("；", "base"),
-            ("Ctrl", "mod"),
-            ("+左键命中四角：对角缩放；四边把手仍", "base"),
-            ("左键", "key"),
-            ("拖；", "base"),
-            ("右键", "key"),
-            ("幽灵删格；自动填充格", "base"),
-            ("Ctrl", "mod"),
-            ("+左键", "base"),
-            ("金", "gold"),
-            ("、", "base"),
-            ("Ctrl", "mod"),
-            ("+右键", "base"),
-            ("红；日志物品轮廓未锁时", "base"),
-            ("右键", "key"),
-            ("命中可还原手动画框；", "base"),
-            ("弹窗", "base"),
-            ("双击", "key"),
-            ("行确认；", "base"),
-            ("Ctrl", "mod"),
-            ("+", "base"),
-            ("Shift", "key"),
-            ("+Z：还原轮廓", "base"),
-        ]
-        for piece, tag in segments:
-            text.insert(tk.END, piece, tag)
-
-        def _sync_hint_geometry(_event: tk.Event | None = None) -> None:
-            w = wrap.winfo_width()
-            if w <= ch_w * 12:
-                return
-            cols = max(24, (w - 8) // ch_w)
-            text.configure(state=tk.NORMAL)
-            text.configure(width=cols)
-            # 无 \\n 时 index 的逻辑行恒为 1，必须用 displaylines 统计软换行后的行数
-            text.update_idletasks()
-            try:
-                dlines = int(
-                    text.tk.call(text._w, "count", "-displaylines", "1.0", "end-1c")
-                )
-            except tk.TclError:
-                dlines = int(float(text.index("end-1c").split(".")[0]))
-            text.configure(height=max(2, dlines * 2))
-            text.configure(state=tk.DISABLED)
-
-        text.configure(state=tk.DISABLED)
-        wrap.bind("<Configure>", _sync_hint_geometry, add="+")
-        wrap.after_idle(_sync_hint_geometry)
 
     def _build_nav_bar(self) -> None:
         """快照导航栏：上一步 / 当前位置 / 下一步（仅快照模式显示）。"""

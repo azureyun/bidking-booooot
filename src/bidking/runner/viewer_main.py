@@ -153,7 +153,7 @@ def _show_start_page(default_log: str, csv_path: str) -> None:
 
     # ── 启动看板 tab ───────────────────────────────────────────────────────
     log_var = tk.StringVar(value=default_log)
-    mode_var = tk.StringVar(value="replay")
+    mode_var = tk.StringVar(value="tail")
     board_var = tk.StringVar(value="elsa")
 
     frame = tk.Frame(launch_tab, padx=14, pady=12)
