@@ -77,8 +77,6 @@ New-Item -ItemType Directory -Force -Path $LauncherDir | Out-Null
 $GridLauncher = Join-Path $LauncherDir "grid_view_main.py"
 
 @"
-import sys
-sys.path.insert(0, r"$SourceRoot")
 from bidking.runner.viewer_main import main
 if __name__ == "__main__":
     main()

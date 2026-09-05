@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -21,11 +22,22 @@ def project_root() -> Path:
     if env:
         return Path(env).resolve()
 
-    here = Path(__file__).resolve()
-    for parent in (here.parent, *here.parents):
+    if getattr(sys, "frozen", False):
+        # 打包后的程序：以 exe 所在目录为起点向上找最近一棵含 configs/ + data/ 的树，
+        # 让「exe + data + configs 同级分发」在任何启动方式（双击/命令行/工作目录）下都一致，
+        # 不再受源码仓库位置或当前工作目录影响。
+        start: Path = Path(sys.executable).resolve().parent
+    else:
+        # 源码运行：以本模块所在目录为起点向上找（仓库根/被 pip install 的站点均可）。
+        start = Path(__file__).resolve().parent
+
+    for parent in (start, *start.parents):
         if _looks_like_root(parent):
             return parent
 
+    if getattr(sys, "frozen", False):
+        # 冻结程序兜底：exe 同级即根（不存在 configs/data 时在其下新建，分发缺失文件不静默写丢）
+        return Path(sys.executable).resolve().parent
     return Path.cwd().resolve()
 
 
