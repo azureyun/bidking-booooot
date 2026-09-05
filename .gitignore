@@ -10,6 +10,7 @@ dist/
 *.egg
 MANIFEST
 pip-wheel-metadata/
+StreamingAssets/
 
 # Virtual environments
 .venv/
@@ -78,3 +79,7 @@ configs/price_config.json
 
 # Copied PyInstaller artifact at repo root (real build output stays under dist/)
 /grid_view.exe
+
+# One-click refresh tool: local UnityPy sandbox (tools/_deps) and scratch output
+/tools/_deps/
+/tools/_out_test/
