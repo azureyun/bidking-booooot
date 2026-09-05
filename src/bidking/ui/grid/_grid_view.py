@@ -63,6 +63,7 @@ from ...parsing.constants import (
 from ...parsing.handlers import handle_s2c33, handle_s2c37, handle_s2c39, handle_s2c45, handle_s2c265, handle_c2s34
 from ...parsing.item_db import (
     candidate_probabilities,
+    is_estimate_excluded_item,
     map_bundle_key_for_automation,
     map_category_ratios,
     probability_source_label,
@@ -5327,7 +5328,6 @@ class GridWindow:
 
         # ── 过滤候选（含负向约束 + 最大尺寸推断） ──────────────────────────
         candidates = self._candidate_items_for_grid(uid, k)
-        candidates.sort(key=lambda i: -i.base_value)
         candidate_probs = candidate_probabilities(
             candidates,
             map_category_weights=self._map_category_weights,
@@ -5335,10 +5335,28 @@ class GridWindow:
         )
         prob_source = probability_source_label(candidates, self.state.map_id)
 
+        # 估价默认剔除项（如 tag=100 龙蛋/皮影，低概率高价）：仍展示但概率按 0，
+        # 列表沉底、不计入估价统计与高亮。
+        est_candidates = [
+            c for c in candidates if not is_estimate_excluded_item(c)
+        ]
+        excl_est_candidates = [
+            c for c in candidates if is_estimate_excluded_item(c)
+        ]
+        est_candidates.sort(key=lambda i: -i.base_value)
+        excl_est_candidates.sort(key=lambda i: -i.base_value)
+        candidates = est_candidates + excl_est_candidates
+
         # ── 统计摘要 ────────────────────────────────────────────────────
         n = len(candidates)
-        if n > 1:
-            prices = [i.base_value for i in candidates]
+        n_est = len(est_candidates)
+        if n == 1:
+            stat_text = (
+                f"唯一确定: {candidates[0].name}    "
+                f"¥{candidates[0].base_value:,}    概率: {prob_source}"
+            )
+        elif n_est > 1:
+            prices = [i.base_value for i in est_candidates]
             min_p, max_p = min(prices), max(prices)
             _best, _count, _unique, weighted_est, weighted_label = (
                 self._query_item_for_grid(uid, k)
@@ -5348,15 +5366,31 @@ class GridWindow:
                 if weighted_est is not None
                 else ""
             )
+            excl_text = (
+                f"    另有 {len(excl_est_candidates)} 个低概率高价候选概率按 0"
+                if excl_est_candidates
+                else ""
+            )
             stat_text = (
                 f"共 {n} 个候选    "
                 f"{weighted_text}"
-                f"范围: ¥{min_p:,} ~ ¥{max_p:,}    概率: {prob_source}"
+                f"范围: ¥{min_p:,} ~ ¥{max_p:,}    概率: {prob_source}{excl_text}"
             )
-        elif n == 1:
+        elif n_est == 1:
+            one = est_candidates[0]
+            excl_text = (
+                f"（另有 {len(excl_est_candidates)} 个低概率高价候选概率按 0）"
+                if excl_est_candidates
+                else ""
+            )
             stat_text = (
-                f"唯一确定: {candidates[0].name}    "
-                f"¥{candidates[0].base_value:,}    概率: {prob_source}"
+                f"候选 {n} 个，估价候选: {one.name}    "
+                f"¥{one.base_value:,}    概率: {prob_source}{excl_text}"
+            )
+        elif n > 1:
+            stat_text = (
+                f"共 {n} 个候选（均为默认不参与估价的低概率高价类）    "
+                f"不估价    概率: {prob_source}"
             )
         else:
             stat_text = "无匹配候选"
@@ -5419,15 +5453,20 @@ class GridWindow:
         vsb.pack(side="right", fill="y")
         tree.pack(side="left", fill="both", expand=True)
 
-        # 用颜色区分价格高低（高于中位价的标黄，最高价标橙）
+        # 用颜色区分价格高低（仅针对参与估价的候选；估价剔除项置灰沉底）
         median_val = (
-            statistics.median([i.base_value for i in candidates]) if n > 1 else 0
+            statistics.median([i.base_value for i in est_candidates])
+            if n_est > 1
+            else 0
         )
-        top_val = candidates[0].base_value if candidates else 0
+        top_val = est_candidates[0].base_value if est_candidates else 0
         tree.tag_configure("top", background="#ffe4b0")
         tree.tag_configure("valuable", background="#ffd6d6")
         tree.tag_configure("high", background="#fffff0")
         tree.tag_configure("normal", background="#ffffff")
+        tree.tag_configure(
+            "excluded_est", background="#efeff4", foreground="#8a8a99"
+        )
         tree.tag_configure("confirmed", background="#d9f7d9")
 
         iid_to_item: Dict[str, CsvItem] = {}
@@ -5439,11 +5478,13 @@ class GridWindow:
             )
             if confirmed_cid and item.item_id == confirmed_cid:
                 tag = "confirmed"
+            elif is_estimate_excluded_item(item):
+                tag = "excluded_est"
             elif item.base_value >= HIGH_VALUE_THRESHOLD:
                 tag = "valuable"
-            elif item.base_value == top_val and n > 1:
+            elif item.base_value == top_val and n_est > 1:
                 tag = "top"
-            elif item.base_value >= median_val:
+            elif n_est > 1 and item.base_value >= median_val:
                 tag = "high"
             else:
                 tag = "normal"

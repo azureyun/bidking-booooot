@@ -19,6 +19,16 @@ MAP_PRIOR_HTML = "物品轮廓爆率推断器.html"
 DEFAULT_MAP_CATEGORY_WEIGHTS: Dict[int, float] = {
     cat: 1.0 for cat in range(101, 112)
 }
+# 估价/概率计算中默认剔除的类别 tag：tag=100 的一组（金陵折扇/龙蛋/皮影…）
+# 掉落概率极低但单价极高，会把多候选权重期望价与概率分布拉高。
+# 剔除后物品仍在候选/列表中可见（概率按 0 显示），只是不参与权重价/期望/归一化概率；
+# 唯一确定（含手动确认）时仍按真实价处理。
+ESTIMATE_EXCLUDED_CATEGORY_TAGS: frozenset = frozenset({100})
+
+
+def is_estimate_excluded_item(item: CsvItem) -> bool:
+    """物品是否属于估价默认剔除的类别（低概率 + 高价值）。"""
+    return bool(ESTIMATE_EXCLUDED_CATEGORY_TAGS.intersection(item.category_tags))
 # 多候选权重期望价：单价超过该阈值的候选不参与期望计算（避免天价拉爆期望），
 # 候选集合本身不变；已指定 ItemCid 或仅剩单候选时走精确价，不经过此逻辑。
 WEIGHTED_EST_MAX_ITEM_BASE_VALUE: float = 5_000_000.0
@@ -380,6 +390,9 @@ def _candidate_weight(
     map_drop_weights: Optional[Dict[int, float]] = None,
 ) -> float:
     """计算单个候选的有效出现权重；地图类别权重入口默认全为 1。"""
+    if is_estimate_excluded_item(item):
+        # 估价默认剔除类别（如 tag=100 龙蛋/皮影）：权重置 0，概率与期望价随之归零。
+        return 0.0
     category_weights = map_category_weights or DEFAULT_MAP_CATEGORY_WEIGHTS
 
     if map_drop_weights:
@@ -529,8 +542,16 @@ def candidate_probabilities(
     if total <= 0 and map_drop_weights:
         return candidate_probabilities(candidates, map_category_weights, None)
     if total <= 0:
-        equal = 1.0 / len(candidates)
-        return {item.item_id: equal for item in candidates}
+        # 权重全部为 0（如候选仅剩估价剔除的低概率高价项）时，
+        # 不给剔除项分摊概率：剔除项保持 0，仅在剩余候选内均分。
+        active = [c for c in candidates if not is_estimate_excluded_item(c)]
+        if not active:
+            return {item.item_id: 0.0 for item in candidates}
+        equal = 1.0 / len(active)
+        probs = {item.item_id: 0.0 for item in candidates}
+        for c in active:
+            probs[c.item_id] = equal
+        return probs
     return {item_id: weight / total for item_id, weight in weights.items()}
 
 
